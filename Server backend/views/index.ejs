@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Lixie Clock</title>
+	<script type='text/javascript' src="http://lixie.cyrillekasyc.fr/jscolor.js"></script>
+	<script type='text/javascript' src="http://lixie.cyrillekasyc.fr/socket.io.js"></script>
+	
+	
+	<script>
+		let pageUUID = uuidv4();
+		var socket = io.connect('http://lixie.cyrillekasyc.fr:70/');
+		socket.on("message", function(message){
+			console.log(message);
+		})
+		.on("updateColor", function(message){
+			if(message.UUID != pageUUID) {
+				document.querySelector('#colorHex').jscolor.fromRGBA(message.r, message.g, message.b, 1);
+				document.getElementById("colorRed").value = message.r;
+				document.getElementById("colorGreen").value = message.g;
+				document.getElementById("colorBlue").value = message.b;
+				
+				document.getElementById("RedText").innerHTML = message.r;
+				document.getElementById("GreenText").innerHTML = message.g;
+				document.getElementById("BlueText").innerHTML = message.b;
+			}
+		});
+	
+		function rgbToHex(r, g, b) {
+			let redHEX = parseInt(r).toString(16) + "";
+			if(redHEX.length < 2)
+				redHEX = "0" + redHEX;
+				
+			let greenHEX = parseInt(g).toString(16) + "";
+			if(greenHEX.length < 2)
+				greenHEX = "0" + greenHEX;
+			
+			let blueHEX = parseInt(b).toString(16) + "";
+			if(blueHEX.length < 2)
+				blueHEX = "0" + blueHEX;
+			
+			return ("" + redHEX + greenHEX + blueHEX).toUpperCase();
+		}
+
+		function hexToRgb(hex) {
+			var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+			return result ? {
+				r: parseInt(result[1], 16),
+				g: parseInt(result[2], 16),
+				b: parseInt(result[3], 16)
+			} : null;
+		}
+		
+		function updateHEX() {
+			let r,g,b;
+			
+			r = document.getElementById("colorRed").value;
+			g = document.getElementById("colorGreen").value;
+			b = document.getElementById("colorBlue").value;
+			
+			document.getElementById("RedText").innerHTML = r;
+			document.getElementById("GreenText").innerHTML = g;
+			document.getElementById("BlueText").innerHTML = b;
+			
+			document.querySelector('#colorHex').jscolor.fromRGBA(r, g, b, 1);
+			
+			socket.emit("changeColor", {
+				"UUID" : pageUUID,
+				"r" : r,
+				"g" : g,
+				"b" : b
+			})
+		}
+		
+		function updateRGB() {
+			hex = document.getElementById("colorHex").value;
+			let color = hexToRgb(hex);
+			console.log(color);
+			
+			document.getElementById("colorRed").value = color.r;
+			document.getElementById("colorGreen").value = color.g;
+			document.getElementById("colorBlue").value = color.b;
+			
+			document.getElementById("RedText").innerHTML = color.r;
+			document.getElementById("GreenText").innerHTML = color.g;
+			document.getElementById("BlueText").innerHTML = color.b;
+			
+			socket.emit("changeColor", {
+				"UUID" : pageUUID,
+				"r" : color.r,
+				"g" : color.g,
+				"b" : color.b
+			});
+		}
+		
+		function uuidv4() {
+			return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+				var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+				return v.toString(16);
+			});
+		}
+	</script>
+	
+</head>
+<body>
+	<!-- <form action="./changeColor" method="get"> -->
+		<table>
+			<tr>
+				<td>Rouge: <span id="RedText"><%=colorRGB.r%></span></td>
+				<td><input type="range" max="255" min="0" oninput="updateHEX();" id="colorRed" name="colorRed" value="<%=colorRGB.r%>"></td>
+			</tr>
+			<tr>
+				<td>Vert: <span id="GreenText"><%=colorRGB.g%></span></td>
+				<td><input type="range" max="255" min="0" oninput="updateHEX();" id="colorGreen" name="colorGreen" value="<%=colorRGB.g%>"></td>
+			</tr>
+			<tr>
+				<td>Bleu: <span id="BlueText"><%=colorRGB.b%></span></td>
+				<td><input type="range" max="255" min="0" oninput="updateHEX();" id="colorBlue" name="colorBlue" value="<%=colorRGB.b%>"></td>
+			</tr>
+			<tr>
+				<td>Couleur HEX</td>
+				<td><input class="jscolor" onInput="updateRGB();" id="colorHex" name="colorHex" value="<%=colorHEX%>"></td>
+			</tr>
+			<!-- <tr>
+				<td colspan="2" style="text-align: center;"><input type="submit" value="Valider"></td>
+			</tr> -->
+		</table>
+	<!-- </form> -->
+</body>
+
+</html> 
