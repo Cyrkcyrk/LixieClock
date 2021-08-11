@@ -24,7 +24,7 @@ let red = 100;
 let green = 0;
 let blue = 255;
 let update = 0;
-
+let lixieActive = true;
 
 let relayState = 0;
 let AllumerDate, EteindreDate;
@@ -86,6 +86,124 @@ app.get('/', urlencodedParser, function (req, res) {
 .get('/raw/', urlencodedParser, function (req, res) {
 	res.send(currentDateJson());
 })
+.get('/raw_action/', urlencodedParser, function (req, res) {
+	console.log("ACTION", lixieActive);
+	lixieActive = true;
+	red = Math.floor(Math.random() * 255)
+	green = Math.floor(Math.random() * 255)
+	blue = Math.floor(Math.random() * 255)
+	update = 1;
+	io.sockets.emit('updateColor', {
+		r : red,
+		g : green,
+		b : blue
+	});
+	
+	res.send("ok");
+})
+.get('/raw_active/', urlencodedParser, function (req, res) {
+	console.log("ACTIVE");
+	lixieActive = !lixieActive;
+	res.send("ok");
+})
+
+app.get('/relayState', urlencodedParser, function (req, res) {
+	res.render('relay.ejs', {
+		"relayState" : relayState,
+		"AllumerDate" : AllumerDate,
+		"EteindreDate" : EteindreDate,
+		"MaintenantDate" : new Date(),
+		"otherDate" : otherDate
+	});
+})
+.get('/relay', urlencodedParser, function (req, res) {
+	let now = new Date();
+	
+	let StringReturn = now.getFullYear() +'/'+ now.getMonth() +'/'+ now.getDate() +' '+ now.getHours() +':'+ now.getMinutes() +':'+ now.getSeconds() + " "+ relayState;
+	
+	res.send(StringReturn);
+})
+
+.get('/nr', urlencodedParser, function (req, res) {
+	timeOutAllumerEtEteindre();
+	res.redirect("./relayState");
+})
+
+.post('/changeDate', urlencodedParser, function (req, res) {
+	
+	let tmpDate = new Date(req.body.year, req.body.month-1, req.body.day, req.body.hours, req.body.minutes, 0, 0);
+	if(req.body.AllumerEteindre == "Allumer") {
+		AllumerDate = tmpDate;
+		let delayAllumer = AllumerDate.getTime() - (new Date() ).getTime();
+		
+		console.log(delayAllumer);
+		
+		clearTimeout(AllumerTimeout);
+		AllumerTimeout = setTimeout(AllumerRelay, delayAllumer);
+	}
+	else {
+		EteindreDate = tmpDate;
+		let delayEteindre = EteindreDate.getTime() - (new Date() ).getTime();
+		clearTimeout(EteindreTimeout);
+		EteindreTimeout = setTimeout(EteindreRelay, delayEteindre);
+	}
+	
+	res.redirect("./relayState");
+})
+
+.post('/newDate', urlencodedParser, function (req, res) {
+	
+	console.log(req.body);
+	
+	otherDate[req.body.ID] = {};
+
+	let tmpDate = new Date(req.body.year, req.body.month-1, req.body.day, req.body.hours, req.body.minutes, 0, 0);
+	
+	otherDate[req.body.ID]["Date"] = tmpDate;
+	
+	let delay = tmpDate.getTime() - (new Date() ).getTime();
+	
+	
+	
+	if(req.body.etat === '1') {
+		otherDate[req.body.ID]["Etat"] = 1;
+		otherDate[req.body.ID]["Timeout"] = setTimeout(AllumerRelay, delay);
+	}
+	else {
+		otherDate[req.body.ID]["Etat"] = 0;
+		otherDate[req.body.ID]["Timeout"] = setTimeout(EteindreRelay, delay);
+	}
+	
+	res.redirect("./relayState");
+})
+
+.post('/supprimerDate', urlencodedParser, function (req, res) {
+
+	if(typeof(req.body.ID) != "undefined" && typeof(otherDate[req.body.ID]) != "undefined") {
+		clearTimeout(otherDate[req.body.ID]["Timeout"]);
+		delete(otherDate[req.body.ID])
+	}
+	
+	res.redirect("./relayState");
+})
+
+
+function AllumerRelay() {
+	relayState = 1;
+	io.sockets.emit('updateRelay',  {
+		"UUID" : "0",
+		"status" : 1,
+	});
+	console.log("ON ALLUME");
+}
+function EteindreRelay() {
+	relayState = 0;
+	io.sockets.emit('updateRelay',  {
+		"UUID" : "0",
+		"status" : 0,
+	});
+	console.log("ON ETEINT");
+}
 
 function padLeadingZeros(num, size) {
     var s = num+"";
@@ -94,17 +212,21 @@ function padLeadingZeros(num, size) {
 }
 
 function currentDateJson() {
+	let _r = red;
+	let _g = green;
+	let _b = blue;
+	
+	if (!lixieActive) {
+		_r = 0;
+		_g = 0;
+		_b = 0;
+	}
+	
 	let now = new Date();
-	
-	// let nowDate = new Date();
-	// var now = new Date(nowDate.getTime() + (1000*60* -28) + (1000*60*60* -16))
-	
 	let StringReturn = padLeadingZeros(now.getFullYear(), 4) + '/' + padLeadingZeros((now.getMonth()+1), 2) +'/'+ padLeadingZeros(now.getDate(), 2) +
 		' ' + padLeadingZeros(now.getHours(), 2) + ':' + padLeadingZeros(now.getMinutes(), 2) + ':' + padLeadingZeros(now.getSeconds(), 2) + 
-		" " + padLeadingZeros(red, 3) +","+ padLeadingZeros(green, 3) +","+ padLeadingZeros(blue, 3);
-	
-	// console.log(StringReturn)
-	
+		" " + padLeadingZeros(_r, 3) +","+ padLeadingZeros(_g, 3) +","+ padLeadingZeros(_b, 3);
+
 	return StringReturn;
 }
 
@@ -167,4 +289,72 @@ function hexToRgb(hex) {
     g: parseInt(result[2], 16),
     b: parseInt(result[3], 16)
   } : null;
+}
+
+
+function timeOutAllumerEtEteindre() {
+	let now = new Date();
+	// now = new Date(now.getTime() + 1000*60*  -40   + 1000*60*60*  -15);
+	
+	AllumerDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 20, 0, 0, 0);
+	AllumerDate = new Date(AllumerDate.getTime() + generateRandomTimer()*60*1000);
+	
+	EteindreDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, 2, 0, 0, 0);
+	EteindreDate = new Date(EteindreDate.getTime() + generateRandomTimer()*60*1000);
+	
+	let delayAllumer = AllumerDate.getTime() - now.getTime();
+	if(delayAllumer <= 0) delayAllumer = 0;
+	
+	let delayEteindre = EteindreDate.getTime() - now.getTime();
+	if(delayEteindre <= 0) delayEteindre = 0;
+	
+	clearTimeout(AllumerTimeout);
+	clearTimeout(EteindreTimeout);
+	
+	AllumerTimeout = setTimeout(AllumerRelay, delayAllumer);
+	EteindreTimeout = setTimeout(EteindreRelay, delayEteindre);
+}
+
+
+
+
+function checkRelayStatus() {
+	
+	
+	let nowDate = new Date();
+	var now = new Date(nowDate.getTime() + 1000*60*  -40   + 1000*60*60*  -15);
+	// console.log(now);
+	// console.log(relayState);
+	
+	let maintenant = now.getHours()*60 + now.getMinutes();
+	
+	let debut = 20*60 + randomTimer;
+	
+	let fin = 2*60 + randomTimer;
+	
+	
+	console.log(debut)
+	console.log(maintenant)
+	console.log(fin);
+	console.log(relayState + " ----------")
+	
+	if((maintenant >= debut && maintenant <= 23*60+59) || (maintenant >= 0 && maintenant <= fin)) {
+		if(relayState == 0) {
+			console.log("On genere un nouveau random");
+			relayState = 1;
+			generateRandomTimer();
+		}
+		
+	}
+	else {
+		if(relayState == 1) {
+			console.log("On genere un nouveau random");
+			generateRandomTimer();
+			relayState = 0;
+		}
+	}
+}
+
+function generateRandomTimer() {
+	return [-1,1][Math.random()*2|0]  *  Math.floor(Math.random() * (45 - 5 + 1) + 5);
 }
