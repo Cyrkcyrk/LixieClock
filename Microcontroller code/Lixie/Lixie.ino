@@ -1,10 +1,12 @@
-#define VERBOSE
+//#define VERBOSE
+#define VERBOSE_CAPACITIVE
 
 #include <EEPROM.h>
 #define EEPROM_SIZE 353
 char ssid[33];
 char password[64];
 char raw_data_src[256];
+int len_raw_data_src;
 
 #include <WiFi.h>
 #include <DNSServer.h>
@@ -32,8 +34,17 @@ int _col = 0;
 int _num = 0;
 
 double now;
+double now2;
 double delai;
 bool startup;
+
+#define CAPACITIVE_PIN 13
+int capacitiveDefault;
+int capacitiveHigh;
+int capacitiveLow;
+int capacitiveRead;
+int capacitiveDetected;
+double capacitiveDuration;
 
 void update_eeprom(int adr, int val) {
   int tmp;
@@ -91,7 +102,7 @@ void afficher_erreur(char *code) {
 }
 
 void setup() {
-  #ifdef VERBOSE
+  #if defined(VERBOSE) || defined(VERBOSE_CAPACITIVE)
     Serial.begin(115200);
     delay(1000);
     Serial.println("Lixie starting");
@@ -109,6 +120,25 @@ void setup() {
   for (int i = 0; i < 256; i++) {
       raw_data_src[i] = EEPROM.read(98 + i);
   }
+  len_raw_data_src = strlen(raw_data_src);
+
+  for (int i = 0; i < 5; i++) {
+    capacitiveDefault += touchRead(CAPACITIVE_PIN);
+    delay(50);
+  }
+  capacitiveDefault = (int)(capacitiveDefault / 5);
+  capacitiveHigh = capacitiveDefault + (int)(0.1*capacitiveDefault);
+  capacitiveLow = capacitiveDefault - (int)(0.1*capacitiveDefault);
+  capacitiveDuration = 0;
+  capacitiveDetected = false;
+
+  Serial.print("Capactitive default: ");
+  Serial.println(capacitiveDefault);
+  Serial.print("Capactitive high: ");
+  Serial.println(capacitiveHigh);
+  Serial.print("Capactitive Low: ");
+  Serial.println(capacitiveLow);
+  
   
   #ifdef VERBOSE
     Serial.printf("SSID: %s\nPSWD: %s\nRAWD: %s\n", ssid, password, raw_data_src);
@@ -173,6 +203,7 @@ void setup() {
               update_eeprom(98 + i, raw_data_src[i]);
             }
             EEPROM.commit();
+            len_raw_data_src = strlen(raw_data_src);
           }
         }
         #ifdef VERBOSE
@@ -214,6 +245,7 @@ void setup() {
     #endif
   }
   now = millis();
+  now2 = millis();
   delai = millis();
 }
 
@@ -228,6 +260,49 @@ void loop() {
     }
   }
 
+  if (now2 + 99 < millis()) {
+    now2 = millis();
+    capacitiveRead = touchRead(CAPACITIVE_PIN);
+    Serial.println(capacitiveRead);
+    Serial.println(capacitiveDetected);
+  }
+  if (capacitiveDetected == false && (capacitiveRead > capacitiveHigh || capacitiveRead < capacitiveLow)) {
+    capacitiveDetected = 1;
+    capacitiveDuration = millis();
+    Serial.println("CAPACITIVE DETECTED");
+  }
+  else if(capacitiveDetected != 0 && capacitiveRead < capacitiveHigh && capacitiveRead > capacitiveLow) {
+    capacitiveDetected = 0;
+    capacitiveDuration = 0;
+  }
+  if (capacitiveDetected) {
+    if (capacitiveDetected == 1 && capacitiveDuration + 150 < millis()) {
+        capacitiveDetected++;
+        Serial.println("0.15 seconds detected");
+        
+        HTTPClient http;
+        char srcData[300];
+        memcpy(srcData, raw_data_src, len_raw_data_src);
+        memcpy(&(srcData[len_raw_data_src]), "_active", 8); 
+        Serial.println(srcData);
+        http.begin(srcData);
+        http.GET();
+        http.end();
+    }
+    if (capacitiveDetected == 2 && capacitiveDuration + 5000 < millis()) {
+        capacitiveDetected++;
+        Serial.println("5 seconds detected");
+        
+        HTTPClient http;
+        char srcData[300];
+        memcpy(srcData, raw_data_src, len_raw_data_src);
+        memcpy(&(srcData[len_raw_data_src]), "_action", 8); 
+        Serial.println(srcData);
+        http.begin(srcData);
+        http.GET();
+        http.end();
+    }
+  }
   if (now + 999 < millis()) {
     now = millis();
     #ifdef VERBOSE
